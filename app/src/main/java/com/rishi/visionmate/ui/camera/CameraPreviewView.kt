@@ -2,11 +2,16 @@ package com.rishi.visionmate.ui.camera
 
 import android.graphics.Bitmap
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -18,18 +23,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.rishi.visionmate.services.camera.CameraManager
 
 @Composable
 fun CameraPreviewView(
     cameraManager: CameraManager,
+    isTorchOn: Boolean,
+    onToggleTorch: (Boolean) -> Unit,
     onCaptureImage: (Bitmap) -> Unit,
     onError: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -54,13 +61,41 @@ fun CameraPreviewView(
             modifier = Modifier.fillMaxSize()
         )
 
-        // Overlay Capture Button with high contrast and speech semantics
-        Box(
+        // Overlay Controls (Torch Toggle & Capture Button)
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp),
-            contentAlignment = Alignment.Center
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                Button(
+                    onClick = {
+                        onToggleTorch(!isTorchOn)
+                    },
+                    modifier = Modifier
+                        .semantics {
+                            contentDescription = if (isTorchOn) "Turn off flashlight" else "Turn on flashlight for dark areas"
+                        },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isTorchOn) Color(0xFFFBC02D) else Color(0xAA000000)
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = if (isTorchOn) "🔦 Torch ON" else "🔦 Torch OFF",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isTorchOn) Color.Black else Color.White
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             Button(
                 onClick = {
                     cameraManager.takePicture(

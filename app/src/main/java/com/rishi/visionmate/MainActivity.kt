@@ -150,7 +150,7 @@ fun HomeScreen(
                 )
             }
 
-            // Central Area: Either Live Camera Preview OR Voice Feedback Display
+            // Central Area: Live Camera Preview OR Spoken Feedback Display Card
             if (uiState.isCameraActive) {
                 Box(
                     modifier = Modifier
@@ -160,6 +160,10 @@ fun HomeScreen(
                 ) {
                     CameraPreviewView(
                         cameraManager = viewModel.cameraManager,
+                        isTorchOn = uiState.isTorchOn,
+                        onToggleTorch = { enable ->
+                            viewModel.toggleTorch(enable)
+                        },
                         onCaptureImage = { bitmap ->
                             viewModel.handleCapturedImage(bitmap)
                         },

@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 data class VoiceUiState(
     val isListening: Boolean = false,
     val isCameraActive: Boolean = false,
+    val isTorchOn: Boolean = false,
     val lastRecognizedText: String = "",
     val lastSpokenResponse: String = "Welcome to VisionMate. Tap the voice button or camera button to begin.",
     val errorMessage: String? = null,
@@ -59,7 +60,21 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         if (active) {
             speakResponse("Camera activated. Point your camera at your surroundings or a document, then tap Capture.")
         } else {
+            toggleTorch(false)
             speakResponse("Camera closed.")
+        }
+    }
+
+    fun toggleTorch(enable: Boolean) {
+        cameraManager.setTorch(enable) { error ->
+            speakResponse(error)
+        }
+        val newState = cameraManager.isTorchOn
+        _uiState.value = _uiState.value.copy(isTorchOn = newState)
+        if (newState) {
+            speakResponse("Torch turned on.")
+        } else if (enable.not()) {
+            speakResponse("Torch turned off.")
         }
     }
 
@@ -81,6 +96,15 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
             cleanText.contains("hello") || cleanText.contains("hi visionmate") -> {
                 speakResponse("Hello! I am VisionMate, your accessibility companion. How can I help you today?")
             }
+            cleanText.contains("torch on") || cleanText.contains("flashlight on") || cleanText.contains("turn on light") || cleanText.contains("light on") -> {
+                if (!_uiState.value.isCameraActive) {
+                    toggleCamera(true)
+                }
+                toggleTorch(true)
+            }
+            cleanText.contains("torch off") || cleanText.contains("flashlight off") || cleanText.contains("turn off light") || cleanText.contains("light off") -> {
+                toggleTorch(false)
+            }
             cleanText.contains("read") || cleanText.contains("camera") || cleanText.contains("around me") || cleanText.contains("vision") -> {
                 toggleCamera(true)
             }
@@ -88,14 +112,14 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                 toggleCamera(false)
             }
             cleanText.contains("help") -> {
-                speakResponse("You can say: 'Open camera', 'What is around me', 'Read this', or 'Help'.")
+                speakResponse("You can say: 'Open camera', 'Turn on light', 'What is around me', 'Read this', or 'Help'.")
             }
             cleanText.contains("stop") -> {
                 ttsManager.stop()
                 speakResponse("Stopped audio playback.")
             }
             else -> {
-                speakResponse("I heard: '$recognizedText'. Say 'Open camera' or 'Help' for options.")
+                speakResponse("I heard: '$recognizedText'. Say 'Open camera', 'Turn on light', or 'Help' for options.")
             }
         }
     }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -20,7 +21,11 @@ class CameraManager(private val context: Context) {
 
     private var imageCapture: ImageCapture? = null
     private var cameraProvider: ProcessCameraProvider? = null
+    private var camera: Camera? = null
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+
+    var isTorchOn: Boolean = false
+        private set
 
     fun bindCamera(
         lifecycleOwner: LifecycleOwner,
@@ -43,18 +48,40 @@ class CameraManager(private val context: Context) {
                 val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
                 cameraProvider?.unbindAll()
-                cameraProvider?.bindToLifecycle(
+                camera = cameraProvider?.bindToLifecycle(
                     lifecycleOwner,
                     cameraSelector,
                     preview,
                     imageCapture
                 )
+
+                // Restore torch state if enabled
+                if (isTorchOn) {
+                    setTorch(true, onError)
+                }
+
                 Log.d("CameraManager", "Camera successfully bound to lifecycle")
             } catch (e: Exception) {
                 Log.e("CameraManager", "Failed to bind camera lifecycle", e)
                 onError("Failed to start camera preview: ${e.localizedMessage}")
             }
         }, ContextCompat.getMainExecutor(context))
+    }
+
+    fun setTorch(enable: Boolean, onError: (String) -> Unit) {
+        val cam = camera
+        if (cam == null) {
+            isTorchOn = enable
+            return
+        }
+
+        if (cam.cameraInfo.hasFlashUnit()) {
+            cam.cameraControl.enableTorch(enable)
+            isTorchOn = enable
+            Log.d("CameraManager", "Torch state set to: $enable")
+        } else {
+            onError("Torch/Flashlight is not available on this camera.")
+        }
     }
 
     fun takePicture(
@@ -98,5 +125,6 @@ class CameraManager(private val context: Context) {
     fun unbind() {
         cameraProvider?.unbindAll()
         cameraExecutor.shutdown()
+        camera = null
     }
 }
