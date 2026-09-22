@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.rishi.visionmate.ui.camera.CameraPreviewView
+import com.rishi.visionmate.ui.safety.IncidentOverlay
 import com.rishi.visionmate.ui.theme.VisionMateTheme
 import com.rishi.visionmate.ui.voice.AppMode
 import com.rishi.visionmate.ui.voice.VoiceViewModel
@@ -121,6 +122,16 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
+    if (uiState.isIncidentAlertActive) {
+        IncidentOverlay(
+            countdownSeconds = uiState.incidentCountdownSeconds,
+            onConfirmOkay = { viewModel.confirmUserIsOkay() },
+            onRequestEmergencyHelp = { viewModel.sendEmergencyAlert() },
+            modifier = modifier
+        )
+        return
+    }
+
     Surface(
         modifier = modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
@@ -135,15 +146,31 @@ fun HomeScreen(
             // Header
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "VisionMate",
-                    style = MaterialTheme.typography.headlineLarge.copy(
-                        fontSize = 34.sp,
-                        fontWeight = FontWeight.Bold
-                    ),
-                    color = MaterialTheme.colorScheme.primary,
-                    textAlign = TextAlign.Center
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "VisionMate",
+                        style = MaterialTheme.typography.headlineLarge.copy(
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    Button(
+                        onClick = { viewModel.triggerIncidentAlert() },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .height(36.dp)
+                            .semantics { contentDescription = "Test safety incident simulation" }
+                    ) {
+                        Text(text = "🚨 Test Safety", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
 
                 // Mode Selector Bar
                 Row(

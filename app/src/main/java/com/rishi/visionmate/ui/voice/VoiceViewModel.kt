@@ -5,10 +5,13 @@ import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.rishi.visionmate.domain.usecase.AnalyzeSceneUseCase
+import com.rishi.visionmate.domain.usecase.DetectIncidentUseCase
 import com.rishi.visionmate.domain.usecase.ReadTextUseCase
 import com.rishi.visionmate.services.camera.CameraManager
 import com.rishi.visionmate.services.speech.SpeechToTextManager
 import com.rishi.visionmate.services.speech.TextToSpeechManager
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,6 +27,8 @@ data class VoiceUiState(
     val isCameraActive: Boolean = false,
     val isTorchOn: Boolean = false,
     val isAnalyzing: Boolean = false,
+    val isIncidentAlertActive: Boolean = false,
+    val incidentCountdownSeconds: Int = 15,
     val activeMode: AppMode = AppMode.VISION,
     val lastRecognizedText: String = "",
     val lastSpokenResponse: String = "Welcome to VisionMate. Tap the voice button or camera button to begin.",
@@ -42,6 +47,11 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     private val analyzeSceneUseCase = AnalyzeSceneUseCase()
     private val readTextUseCase = ReadTextUseCase()
 
+    private var countdownJob: Job? = null
+    private val incidentDetector = DetectIncidentUseCase(application) {
+        triggerIncidentAlert()
+    }
+
     init {
         sttManager = SpeechToTextManager(
             context = application,
@@ -51,6 +61,9 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.value = _uiState.value.copy(isListening = listening)
             }
         )
+        // Start background sensor monitoring for safety incident detection
+        incidentDetector.start()
+
         // Initial spoken welcome
         speakResponse("Welcome to VisionMate. Tap or activate speech to begin.")
     }
@@ -141,6 +154,40 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // Safety Incident Alert Flow
+    fun triggerIncidentAlert() {
+        if (_uiState.value.isIncidentAlertActive) return
+
+        _uiState.value = _uiState.value.copy(
+            isIncidentAlertActive = true,
+            incidentCountdownSeconds = 15
+        )
+
+        speakResponse("Potential incident detected! Are you okay? Say I am okay or tap the green button within 15 seconds.")
+
+        countdownJob?.cancel()
+        countdownJob = viewModelScope.launch {
+            for (sec in 15 downTo 1) {
+                _uiState.value = _uiState.value.copy(incidentCountdownSeconds = sec)
+                delay(1000)
+            }
+            // If countdown expires without user confirmation
+            sendEmergencyAlert()
+        }
+    }
+
+    fun confirmUserIsOkay() {
+        countdownJob?.cancel()
+        _uiState.value = _uiState.value.copy(isIncidentAlertActive = false)
+        speakResponse("Glad to hear you are okay. Incident alert cancelled.")
+    }
+
+    fun sendEmergencyAlert() {
+        countdownJob?.cancel()
+        _uiState.value = _uiState.value.copy(isIncidentAlertActive = false)
+        speakResponse("Emergency simulation alert dispatched to trusted contacts with location payload.")
+    }
+
     fun repeatLastResponse() {
         val currentResponse = _uiState.value.lastSpokenResponse
         speakResponse(currentResponse)
@@ -155,12 +202,27 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = _uiState.value.copy(lastRecognizedText = recognizedText)
 
         val cleanText = recognizedText.lowercase().trim()
+
+        // Handle Active Incident Voice Responses First
+        if (_uiState.value.isIncidentAlertActive) {
+            if (cleanText.contains("okay") || cleanText.contains("fine") || cleanText.contains("cancel") || cleanText.contains("good")) {
+                confirmUserIsOkay()
+                return
+            } else if (cleanText.contains("help") || cleanText.contains("alert") || cleanText.contains("send")) {
+                sendEmergencyAlert()
+                return
+            }
+        }
+
         when {
             cleanText.contains("hello") || cleanText.contains("hi visionmate") -> {
                 speakResponse("Hello! I am VisionMate, your accessibility companion. How can I help you today?")
             }
             cleanText.contains("repeat") || cleanText.contains("say again") || cleanText.contains("read again") -> {
                 repeatLastResponse()
+            }
+            cleanText.contains("test incident") || cleanText.contains("simulate fall") || cleanText.contains("test safety") -> {
+                triggerIncidentAlert()
             }
             cleanText.contains("torch on") || cleanText.contains("flashlight on") || cleanText.contains("turn on light") || cleanText.contains("light on") -> {
                 if (!_uiState.value.isCameraActive) {
@@ -192,7 +254,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                 toggleCamera(false)
             }
             cleanText.contains("help") -> {
-                speakResponse("You can say: 'Read this', 'What is around me', 'Repeat', 'Turn on light', or 'Help'.")
+                speakResponse("You can say: 'Read this', 'What is around me', 'Repeat', 'Test safety', or 'Help'.")
             }
             cleanText.contains("stop") -> {
                 ttsManager.stop()
@@ -211,6 +273,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        incidentDetector.stop()
         sttManager?.destroy()
         ttsManager.shutdown()
         cameraManager.unbind()
