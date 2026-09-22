@@ -48,6 +48,7 @@ import androidx.core.content.ContextCompat
 import com.rishi.visionmate.ui.camera.CameraPreviewView
 import com.rishi.visionmate.ui.medication.MedicationView
 import com.rishi.visionmate.ui.safety.IncidentOverlay
+import com.rishi.visionmate.ui.settings.SettingsDialog
 import com.rishi.visionmate.ui.theme.VisionMateTheme
 import com.rishi.visionmate.ui.voice.AppMode
 import com.rishi.visionmate.ui.voice.VoiceViewModel
@@ -135,6 +136,17 @@ fun HomeScreen(
         return
     }
 
+    if (uiState.isSettingsOpen) {
+        SettingsDialog(
+            isLocationSharingEnabled = uiState.isLocationSharingEnabled,
+            isApiKeyConfigured = uiState.isApiKeyConfigured,
+            onToggleLocationSharing = { enabled ->
+                viewModel.toggleLocationSharing(enabled)
+            },
+            onDismiss = { viewModel.toggleSettings(false) }
+        )
+    }
+
     Surface(
         modifier = modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
@@ -146,7 +158,7 @@ fun HomeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Header
+            // Header Bar with Offline Indicator & Settings
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
@@ -157,21 +169,54 @@ fun HomeScreen(
                     Text(
                         text = "VisionMate",
                         style = MaterialTheme.typography.headlineLarge.copy(
-                            fontSize = 30.sp,
+                            fontSize = 28.sp,
                             fontWeight = FontWeight.Bold
                         ),
                         color = MaterialTheme.colorScheme.primary
                     )
 
-                    Button(
-                        onClick = { viewModel.triggerIncidentAlert() },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
-                        shape = RoundedCornerShape(8.dp),
+                    Row {
+                        OutlinedButton(
+                            onClick = { viewModel.toggleSettings(true) },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .height(36.dp)
+                                .semantics { contentDescription = "Open Settings and Privacy" }
+                        ) {
+                            Text(text = "⚙️ Settings", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        Button(
+                            onClick = { viewModel.triggerIncidentAlert() },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .height(36.dp)
+                                .semantics { contentDescription = "Test safety incident simulation" }
+                        ) {
+                            Text(text = "🚨 Safety", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                }
+
+                // Offline Notice Banner
+                if (!uiState.isOnline) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Box(
                         modifier = Modifier
-                            .height(36.dp)
-                            .semantics { contentDescription = "Test safety incident simulation" }
+                            .fillMaxWidth()
+                            .background(Color(0xFFE65100), RoundedCornerShape(6.dp))
+                            .padding(6.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(text = "🚨 Test Safety", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text(
+                            text = "📡 Offline Mode: Using Local Text Reader",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
 

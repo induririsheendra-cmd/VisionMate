@@ -4,12 +4,15 @@ import android.app.Application
 import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.rishi.visionmate.BuildConfig
+import com.rishi.visionmate.core.common.NetworkMonitor
 import com.rishi.visionmate.domain.model.MedicationItem
 import com.rishi.visionmate.domain.usecase.AnalyzeSceneUseCase
 import com.rishi.visionmate.domain.usecase.DetectIncidentUseCase
 import com.rishi.visionmate.domain.usecase.ExtractMedicationUseCase
 import com.rishi.visionmate.domain.usecase.ReadTextUseCase
 import com.rishi.visionmate.services.camera.CameraManager
+import com.rishi.visionmate.services.location.LocationProvider
 import com.rishi.visionmate.services.speech.SpeechToTextManager
 import com.rishi.visionmate.services.speech.TextToSpeechManager
 import kotlinx.coroutines.Job
@@ -32,6 +35,10 @@ data class VoiceUiState(
     val isAnalyzing: Boolean = false,
     val isIncidentAlertActive: Boolean = false,
     val incidentCountdownSeconds: Int = 15,
+    val isOnline: Boolean = true,
+    val isLocationSharingEnabled: Boolean = true,
+    val isApiKeyConfigured: Boolean = BuildConfig.GEMINI_API_KEY.isNotBlank(),
+    val isSettingsOpen: Boolean = false,
     val activeMode: AppMode = AppMode.VISION,
     val detectedMedication: MedicationItem? = null,
     val lastRecognizedText: String = "",
@@ -51,6 +58,8 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     private val analyzeSceneUseCase = AnalyzeSceneUseCase()
     private val readTextUseCase = ReadTextUseCase()
     private val extractMedicationUseCase = ExtractMedicationUseCase()
+    private val networkMonitor = NetworkMonitor(application)
+    private val locationProvider = LocationProvider(application)
 
     private var countdownJob: Job? = null
     private val incidentDetector = DetectIncidentUseCase(application) {
@@ -66,8 +75,15 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.value = _uiState.value.copy(isListening = listening)
             }
         )
-        // Start background sensor monitoring for safety incident detection
+        // Start background sensors & network monitoring
         incidentDetector.start()
+        networkMonitor.startMonitoring()
+
+        viewModelScope.launch {
+            networkMonitor.isOnline.collect { online ->
+                _uiState.value = _uiState.value.copy(isOnline = online)
+            }
+        }
 
         // Initial spoken welcome
         speakResponse("Welcome to VisionMate. Tap or activate speech to begin.")
@@ -84,6 +100,19 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
 
     fun stopSpeech() {
         ttsManager.stop()
+    }
+
+    fun toggleSettings(open: Boolean) {
+        _uiState.value = _uiState.value.copy(isSettingsOpen = open)
+    }
+
+    fun toggleLocationSharing(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(isLocationSharingEnabled = enabled)
+        if (enabled) {
+            speakResponse("Emergency location sharing enabled.")
+        } else {
+            speakResponse("Emergency location sharing disabled.")
+        }
     }
 
     fun setMode(mode: AppMode) {
@@ -130,6 +159,18 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
             errorMessage = null,
             detectedMedication = null
         )
+
+        // Offline Fallback Check
+        if (_uiState.value.activeMode == AppMode.VISION && !_uiState.value.isOnline) {
+            speakResponse("Network is offline. Falling back to local text reader.")
+            viewModelScope.launch {
+                val result = readTextUseCase(bitmap)
+                _uiState.value = _uiState.value.copy(isAnalyzing = false)
+                result.onSuccess { text -> speakResponse(text) }
+                    .onFailure { speakResponse("Network is offline and no text was detected.") }
+            }
+            return
+        }
 
         when (_uiState.value.activeMode) {
             AppMode.READ -> {
@@ -226,7 +267,20 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     fun sendEmergencyAlert() {
         countdownJob?.cancel()
         _uiState.value = _uiState.value.copy(isIncidentAlertActive = false)
-        speakResponse("Emergency simulation alert dispatched to trusted contacts with location payload.")
+
+        viewModelScope.launch {
+            val location = if (_uiState.value.isLocationSharingEnabled) {
+                locationProvider.getCurrentLocation()
+            } else null
+
+            val locationInfo = if (location != null) {
+                "Location: ${location.latitude}, ${location.longitude}"
+            } else {
+                "Location unavailable or disabled."
+            }
+
+            speakResponse("Emergency alert dispatched to trusted contacts. $locationInfo")
+        }
     }
 
     fun repeatLastResponse() {
@@ -264,6 +318,10 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
             }
             cleanText.contains("repeat") || cleanText.contains("say again") || cleanText.contains("read again") -> {
                 repeatLastResponse()
+            }
+            cleanText.contains("settings") || cleanText.contains("privacy") -> {
+                toggleSettings(true)
+                speakResponse("Settings opened.")
             }
             cleanText.contains("test incident") || cleanText.contains("simulate fall") || cleanText.contains("test safety") -> {
                 triggerIncidentAlert()
@@ -304,7 +362,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                 toggleCamera(false)
             }
             cleanText.contains("help") -> {
-                speakResponse("You can say: 'Medication', 'Read this', 'What is around me', 'Repeat', 'Test safety', or 'Help'.")
+                speakResponse("You can say: 'Medication', 'Read this', 'What is around me', 'Repeat', 'Settings', or 'Help'.")
             }
             cleanText.contains("stop") -> {
                 ttsManager.stop()
@@ -323,6 +381,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        networkMonitor.stopMonitoring()
         incidentDetector.stop()
         sttManager?.destroy()
         ttsManager.shutdown()
