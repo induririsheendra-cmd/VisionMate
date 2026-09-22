@@ -4,8 +4,10 @@ import android.app.Application
 import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.rishi.visionmate.domain.model.MedicationItem
 import com.rishi.visionmate.domain.usecase.AnalyzeSceneUseCase
 import com.rishi.visionmate.domain.usecase.DetectIncidentUseCase
+import com.rishi.visionmate.domain.usecase.ExtractMedicationUseCase
 import com.rishi.visionmate.domain.usecase.ReadTextUseCase
 import com.rishi.visionmate.services.camera.CameraManager
 import com.rishi.visionmate.services.speech.SpeechToTextManager
@@ -19,7 +21,8 @@ import kotlinx.coroutines.launch
 
 enum class AppMode {
     VISION,
-    READ
+    READ,
+    MEDICATION
 }
 
 data class VoiceUiState(
@@ -30,6 +33,7 @@ data class VoiceUiState(
     val isIncidentAlertActive: Boolean = false,
     val incidentCountdownSeconds: Int = 15,
     val activeMode: AppMode = AppMode.VISION,
+    val detectedMedication: MedicationItem? = null,
     val lastRecognizedText: String = "",
     val lastSpokenResponse: String = "Welcome to VisionMate. Tap the voice button or camera button to begin.",
     val errorMessage: String? = null,
@@ -46,6 +50,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     val cameraManager: CameraManager = CameraManager(application)
     private val analyzeSceneUseCase = AnalyzeSceneUseCase()
     private val readTextUseCase = ReadTextUseCase()
+    private val extractMedicationUseCase = ExtractMedicationUseCase()
 
     private var countdownJob: Job? = null
     private val incidentDetector = DetectIncidentUseCase(application) {
@@ -82,18 +87,22 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setMode(mode: AppMode) {
-        _uiState.value = _uiState.value.copy(activeMode = mode)
-        if (mode == AppMode.READ) {
-            speakResponse("Read Mode selected. Point camera at document or text and tap Capture.")
-        } else {
-            speakResponse("Vision Mode selected. Point camera at your surroundings and tap Capture.")
+        _uiState.value = _uiState.value.copy(activeMode = mode, detectedMedication = null)
+        when (mode) {
+            AppMode.READ -> speakResponse("Read Mode selected. Point camera at document or text and tap Capture.")
+            AppMode.MEDICATION -> speakResponse("Medication Assistant selected. Point camera at prescription label or bottle and tap Capture.")
+            AppMode.VISION -> speakResponse("Vision Mode selected. Point camera at your surroundings and tap Capture.")
         }
     }
 
     fun toggleCamera(active: Boolean) {
         _uiState.value = _uiState.value.copy(isCameraActive = active)
         if (active) {
-            val modeName = if (_uiState.value.activeMode == AppMode.READ) "Read Mode" else "Vision Mode"
+            val modeName = when (_uiState.value.activeMode) {
+                AppMode.READ -> "Read Mode"
+                AppMode.MEDICATION -> "Medication Assistant"
+                AppMode.VISION -> "Vision Mode"
+            }
             speakResponse("Camera activated in $modeName. Point your camera and tap Capture.")
         } else {
             toggleTorch(false)
@@ -118,40 +127,72 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = _uiState.value.copy(
             capturedBitmap = bitmap,
             isAnalyzing = true,
-            errorMessage = null
+            errorMessage = null,
+            detectedMedication = null
         )
 
-        if (_uiState.value.activeMode == AppMode.READ) {
-            speakResponse("Photo captured. Reading text from document, please wait...")
-            viewModelScope.launch {
-                val result = readTextUseCase(bitmap)
-                _uiState.value = _uiState.value.copy(isAnalyzing = false)
-                result.onSuccess { text ->
-                    speakResponse(text)
-                }.onFailure { error ->
-                    val errorMsg = "Unable to read document: ${error.localizedMessage}"
-                    _uiState.value = _uiState.value.copy(errorMessage = errorMsg)
-                    speakResponse(errorMsg)
+        when (_uiState.value.activeMode) {
+            AppMode.READ -> {
+                speakResponse("Photo captured. Reading text from document, please wait...")
+                viewModelScope.launch {
+                    val result = readTextUseCase(bitmap)
+                    _uiState.value = _uiState.value.copy(isAnalyzing = false)
+                    result.onSuccess { text ->
+                        speakResponse(text)
+                    }.onFailure { error ->
+                        val errorMsg = "Unable to read document: ${error.localizedMessage}"
+                        _uiState.value = _uiState.value.copy(errorMessage = errorMsg)
+                        speakResponse(errorMsg)
+                    }
                 }
             }
-        } else {
-            speakResponse("Photo captured. Analyzing your surroundings, please wait...")
-            viewModelScope.launch {
-                val result = analyzeSceneUseCase(bitmap)
-                _uiState.value = _uiState.value.copy(isAnalyzing = false)
-                result.onSuccess { description ->
-                    speakResponse(description)
-                }.onFailure { error ->
-                    val userMsg = if (error.message?.contains("API key") == true) {
-                        "API key is not configured in local.properties. Please add GEMINI_API_KEY."
-                    } else {
-                        "Unable to analyze image. Please check your internet connection."
+            AppMode.MEDICATION -> {
+                speakResponse("Photo captured. Extracting medication label details, please wait...")
+                viewModelScope.launch {
+                    val result = readTextUseCase(bitmap)
+                    _uiState.value = _uiState.value.copy(isAnalyzing = false)
+                    result.onSuccess { rawText ->
+                        val medication = extractMedicationUseCase(rawText)
+                        _uiState.value = _uiState.value.copy(detectedMedication = medication)
+                        speakResponse("Detected medication: ${medication.name}, Dosage: ${medication.dosage}. Please verify package label with your pharmacist and tap Confirm to schedule.")
+                    }.onFailure { error ->
+                        val errorMsg = "Unable to read medication label: ${error.localizedMessage}"
+                        _uiState.value = _uiState.value.copy(errorMessage = errorMsg)
+                        speakResponse(errorMsg)
                     }
-                    _uiState.value = _uiState.value.copy(errorMessage = userMsg)
-                    speakResponse(userMsg)
+                }
+            }
+            AppMode.VISION -> {
+                speakResponse("Photo captured. Analyzing your surroundings, please wait...")
+                viewModelScope.launch {
+                    val result = analyzeSceneUseCase(bitmap)
+                    _uiState.value = _uiState.value.copy(isAnalyzing = false)
+                    result.onSuccess { description ->
+                        speakResponse(description)
+                    }.onFailure { error ->
+                        val userMsg = if (error.message?.contains("API key") == true) {
+                            "API key is not configured in local.properties. Please add GEMINI_API_KEY."
+                        } else {
+                            "Unable to analyze image. Please check your internet connection."
+                        }
+                        _uiState.value = _uiState.value.copy(errorMessage = userMsg)
+                        speakResponse(userMsg)
+                    }
                 }
             }
         }
+    }
+
+    fun confirmMedicationReminder() {
+        val currentMed = _uiState.value.detectedMedication ?: return
+        val confirmedItem = currentMed.copy(isConfirmedByUser = true)
+        _uiState.value = _uiState.value.copy(detectedMedication = confirmedItem)
+        speakResponse("Medication reminder confirmed for ${confirmedItem.name}, dosage ${confirmedItem.dosage}.")
+    }
+
+    fun clearMedication() {
+        _uiState.value = _uiState.value.copy(detectedMedication = null)
+        speakResponse("Medication scan cleared.")
     }
 
     // Safety Incident Alert Flow
@@ -203,7 +244,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
 
         val cleanText = recognizedText.lowercase().trim()
 
-        // Handle Active Incident Voice Responses First
+        // Handle Active Incident Voice Responses
         if (_uiState.value.isIncidentAlertActive) {
             if (cleanText.contains("okay") || cleanText.contains("fine") || cleanText.contains("cancel") || cleanText.contains("good")) {
                 confirmUserIsOkay()
@@ -217,6 +258,9 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         when {
             cleanText.contains("hello") || cleanText.contains("hi visionmate") -> {
                 speakResponse("Hello! I am VisionMate, your accessibility companion. How can I help you today?")
+            }
+            cleanText.contains("confirm medication") || cleanText.contains("confirm reminder") -> {
+                confirmMedicationReminder()
             }
             cleanText.contains("repeat") || cleanText.contains("say again") || cleanText.contains("read again") -> {
                 repeatLastResponse()
@@ -232,6 +276,12 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
             }
             cleanText.contains("torch off") || cleanText.contains("flashlight off") || cleanText.contains("turn off light") || cleanText.contains("light off") -> {
                 toggleTorch(false)
+            }
+            cleanText.contains("medication") || cleanText.contains("medicine") || cleanText.contains("pill") || cleanText.contains("prescription") -> {
+                setMode(AppMode.MEDICATION)
+                if (!_uiState.value.isCameraActive) {
+                    toggleCamera(true)
+                }
             }
             cleanText.contains("read") || cleanText.contains("read this") || cleanText.contains("document") -> {
                 setMode(AppMode.READ)
@@ -254,14 +304,14 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                 toggleCamera(false)
             }
             cleanText.contains("help") -> {
-                speakResponse("You can say: 'Read this', 'What is around me', 'Repeat', 'Test safety', or 'Help'.")
+                speakResponse("You can say: 'Medication', 'Read this', 'What is around me', 'Repeat', 'Test safety', or 'Help'.")
             }
             cleanText.contains("stop") -> {
                 ttsManager.stop()
                 speakResponse("Stopped audio playback.")
             }
             else -> {
-                speakResponse("I heard: '$recognizedText'. Say 'Read this', 'What is around me', or 'Help' for options.")
+                speakResponse("I heard: '$recognizedText'. Say 'Medication', 'Read this', 'What is around me', or 'Help' for options.")
             }
         }
     }

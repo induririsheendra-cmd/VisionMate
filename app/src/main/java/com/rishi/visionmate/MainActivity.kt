@@ -20,7 +20,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -44,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.rishi.visionmate.ui.camera.CameraPreviewView
+import com.rishi.visionmate.ui.medication.MedicationView
 import com.rishi.visionmate.ui.safety.IncidentOverlay
 import com.rishi.visionmate.ui.theme.VisionMateTheme
 import com.rishi.visionmate.ui.voice.AppMode
@@ -70,8 +73,8 @@ class MainActivity : ComponentActivity() {
         if (isGranted) {
             voiceViewModel.toggleCamera(true)
         } else {
-            Toast.makeText(this, "Camera permission is required for vision and read modes", Toast.LENGTH_LONG).show()
-            voiceViewModel.speakResponse("Camera permission is required to use Vision and Read modes.")
+            Toast.makeText(this, "Camera permission is required for vision, read, and medication modes", Toast.LENGTH_LONG).show()
+            voiceViewModel.speakResponse("Camera permission is required to use Vision, Read, and Medication modes.")
         }
     }
 
@@ -154,7 +157,7 @@ fun HomeScreen(
                     Text(
                         text = "VisionMate",
                         style = MaterialTheme.typography.headlineLarge.copy(
-                            fontSize = 32.sp,
+                            fontSize = 30.sp,
                             fontWeight = FontWeight.Bold
                         ),
                         color = MaterialTheme.colorScheme.primary
@@ -172,12 +175,12 @@ fun HomeScreen(
                     }
                 }
 
-                // Mode Selector Bar
+                // Mode Selector Bar (Vision / Read / Medication)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Button(
                         onClick = { viewModel.setMode(AppMode.VISION) },
@@ -186,14 +189,14 @@ fun HomeScreen(
                         ),
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
+                            .height(44.dp)
                             .semantics { contentDescription = "Switch to Vision Mode for scene description" },
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text(text = "👁 Vision", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text(text = "👁 Vision", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
 
                     Button(
                         onClick = { viewModel.setMode(AppMode.READ) },
@@ -202,16 +205,32 @@ fun HomeScreen(
                         ),
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
+                            .height(44.dp)
                             .semantics { contentDescription = "Switch to Read Mode for document reading" },
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text(text = "📖 Read Text", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text(text = "📖 Read", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    Button(
+                        onClick = { viewModel.setMode(AppMode.MEDICATION) },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (uiState.activeMode == AppMode.MEDICATION) Color(0xFFE65100) else Color.Gray
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .semantics { contentDescription = "Switch to Medication Assistant mode" },
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(text = "💊 Medicine", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
             }
 
-            // Central Area: Live Camera Preview OR Spoken Text Display Card
+            // Central Area: Live Camera Preview OR Spoken Output Display / Medication View
             if (uiState.isCameraActive) {
                 Box(
                     modifier = Modifier
@@ -236,6 +255,19 @@ fun HomeScreen(
                             .semantics {
                                 contentDescription = "Live camera view"
                             }
+                    )
+                }
+            } else if (uiState.detectedMedication != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    MedicationView(
+                        item = uiState.detectedMedication!!,
+                        onConfirmReminder = { viewModel.confirmMedicationReminder() },
+                        onCancel = { viewModel.clearMedication() }
                     )
                 }
             } else {
@@ -277,8 +309,14 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.height(12.dp))
                         }
 
+                        val modeTitle = when (uiState.activeMode) {
+                            AppMode.READ -> "Read Mode Output:"
+                            AppMode.MEDICATION -> "Medication Output:"
+                            AppMode.VISION -> "Vision Mode Output:"
+                        }
+
                         Text(
-                            text = if (uiState.activeMode == AppMode.READ) "Read Mode Output:" else "Vision Mode Output:",
+                            text = modeTitle,
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary
                         )
