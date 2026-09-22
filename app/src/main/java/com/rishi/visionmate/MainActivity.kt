@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.rishi.visionmate.ui.camera.CameraPreviewView
 import com.rishi.visionmate.ui.theme.VisionMateTheme
+import com.rishi.visionmate.ui.voice.AppMode
 import com.rishi.visionmate.ui.voice.VoiceViewModel
 
 class MainActivity : ComponentActivity() {
@@ -68,8 +69,8 @@ class MainActivity : ComponentActivity() {
         if (isGranted) {
             voiceViewModel.toggleCamera(true)
         } else {
-            Toast.makeText(this, "Camera permission is required for vision mode", Toast.LENGTH_LONG).show()
-            voiceViewModel.speakResponse("Camera permission is required to use Vision mode.")
+            Toast.makeText(this, "Camera permission is required for vision and read modes", Toast.LENGTH_LONG).show()
+            voiceViewModel.speakResponse("Camera permission is required to use Vision and Read modes.")
         }
     }
 
@@ -127,30 +128,63 @@ fun HomeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
+                .padding(14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             // Header
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "VisionMate",
                     style = MaterialTheme.typography.headlineLarge.copy(
-                        fontSize = 36.sp,
+                        fontSize = 34.sp,
                         fontWeight = FontWeight.Bold
                     ),
                     color = MaterialTheme.colorScheme.primary,
                     textAlign = TextAlign.Center
                 )
-                Text(
-                    text = "Voice & Camera Accessibility Companion",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
+
+                // Mode Selector Bar
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Button(
+                        onClick = { viewModel.setMode(AppMode.VISION) },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (uiState.activeMode == AppMode.VISION) MaterialTheme.colorScheme.primary else Color.Gray
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .semantics { contentDescription = "Switch to Vision Mode for scene description" },
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(text = "👁 Vision", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Button(
+                        onClick = { viewModel.setMode(AppMode.READ) },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (uiState.activeMode == AppMode.READ) Color(0xFF1565C0) else Color.Gray
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .semantics { contentDescription = "Switch to Read Mode for document reading" },
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(text = "📖 Read Text", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
             }
 
-            // Central Area: Live Camera Preview OR Spoken Feedback Display Card
+            // Central Area: Live Camera Preview OR Spoken Text Display Card
             if (uiState.isCameraActive) {
                 Box(
                     modifier = Modifier
@@ -194,7 +228,7 @@ fun HomeScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(20.dp),
+                            .padding(18.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
@@ -203,21 +237,21 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .background(Color(0xFF2E7D32), RoundedCornerShape(8.dp))
-                                    .padding(10.dp),
+                                    .padding(8.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "🎙 Listening now... Speak your command",
+                                    text = "🎙 Listening... Speak command",
                                     color = Color.White,
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp
+                                    fontSize = 15.sp
                                 )
                             }
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
                         }
 
                         Text(
-                            text = "VisionMate Says:",
+                            text = if (uiState.activeMode == AppMode.READ) "Read Mode Output:" else "Vision Mode Output:",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -225,7 +259,7 @@ fun HomeScreen(
                         Text(
                             text = uiState.lastSpokenResponse,
                             style = MaterialTheme.typography.bodyLarge.copy(
-                                fontSize = 18.sp,
+                                fontSize = 17.sp,
                                 fontWeight = FontWeight.Medium
                             ),
                             textAlign = TextAlign.Center,
@@ -233,7 +267,7 @@ fun HomeScreen(
                         )
 
                         if (uiState.lastRecognizedText.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
                             Text(
                                 text = "You Said: \"${uiState.lastRecognizedText}\"",
                                 style = MaterialTheme.typography.bodyMedium,
@@ -244,7 +278,7 @@ fun HomeScreen(
                         }
 
                         uiState.errorMessage?.let { error ->
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
                             Text(
                                 text = error,
                                 color = MaterialTheme.colorScheme.error,
@@ -298,7 +332,7 @@ fun HomeScreen(
                         onClick = onRequestCameraPermission,
                         modifier = Modifier
                             .weight(1f)
-                            .height(56.dp)
+                            .height(52.dp)
                             .semantics {
                                 contentDescription = if (uiState.isCameraActive) "Tap to close camera" else "Tap to open camera"
                             },
@@ -309,26 +343,39 @@ fun HomeScreen(
                     ) {
                         Text(
                             text = if (uiState.isCameraActive) "📷 Close Camera" else "📷 Open Camera",
-                            fontSize = 16.sp,
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    OutlinedButton(
+                        onClick = { viewModel.repeatLastResponse() },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp)
+                            .semantics { contentDescription = "Repeat last text readout" },
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(text = "🔁 Repeat", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
 
                     OutlinedButton(
                         onClick = { viewModel.stopSpeech() },
                         modifier = Modifier
                             .weight(1f)
-                            .height(56.dp)
+                            .height(52.dp)
                             .semantics { contentDescription = "Silence audio output" },
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text(text = "🔇 Stop Audio", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(text = "🔇 Stop", fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(4.dp))
             }
         }
     }
