@@ -18,13 +18,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -34,6 +36,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -78,7 +81,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             VisionMateTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    HomeScreen(
+                    OneUiHomeScreen(
                         viewModel = voiceViewModel,
                         onRequestAudioPermission = { checkAndStartListening() },
                         onRequestCameraPermission = { checkAndToggleCamera() },
@@ -124,13 +127,21 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun HomeScreen(
+fun OneUiHomeScreen(
     viewModel: VoiceViewModel,
     onRequestAudioPermission: () -> Unit,
     onRequestCameraPermission: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    // Color Palette - Samsung One UI Dark Theme
+    val oneUiBg = Color(0xFF121215)
+    val oneUiCardBg = Color(0xFF1E1E24)
+    val oneUiAccentBlue = Color(0xFF007AFF)
+    val oneUiActiveGreen = Color(0xFF2E7D32)
+    val oneUiWarningOrange = Color(0xFFE65100)
+    val oneUiErrorRed = Color(0xFFD32F2F)
 
     if (uiState.isIncidentAlertActive) {
         IncidentOverlay(
@@ -155,51 +166,60 @@ fun HomeScreen(
 
     Surface(
         modifier = modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
+        color = oneUiBg
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(12.dp),
+                .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Header Bar
+            // One UI Header Bar
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "VisionMate",
-                        style = MaterialTheme.typography.headlineLarge.copy(
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    Column {
+                        Text(
+                            text = "VisionMate",
+                            fontSize = 30.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Accessibility Assistant",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.LightGray
+                        )
+                    }
 
-                    Row {
-                        OutlinedButton(
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Settings Pill Button
+                        Button(
                             onClick = { viewModel.toggleSettings(true) },
-                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = oneUiCardBg),
+                            shape = RoundedCornerShape(16.dp),
                             modifier = Modifier
-                                .height(36.dp)
+                                .height(38.dp)
                                 .semantics { contentDescription = "Open Settings and Privacy" }
                         ) {
-                            Text(text = "⚙️ Settings", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(text = "⚙️ Settings", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
 
                         Spacer(modifier = Modifier.width(6.dp))
 
+                        // Safety Test Button
                         Button(
                             onClick = { viewModel.triggerIncidentAlert() },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
-                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = oneUiErrorRed),
+                            shape = RoundedCornerShape(16.dp),
                             modifier = Modifier
-                                .height(36.dp)
+                                .height(38.dp)
                                 .semantics { contentDescription = "Test safety incident simulation" }
                         ) {
                             Text(text = "🚨 Safety", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
@@ -209,84 +229,100 @@ fun HomeScreen(
 
                 // Offline Notice Banner
                 if (!uiState.isOnline) {
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFFE65100), RoundedCornerShape(6.dp))
-                            .padding(6.dp),
+                            .background(oneUiWarningOrange, RoundedCornerShape(12.dp))
+                            .padding(8.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "📡 Offline Mode: Using Local Text Reader",
+                            text = "📡 Offline Mode: On-Device OCR Active",
                             color = Color.White,
-                            fontSize = 12.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
                 }
 
-                // Mode Selector Chips
-                Row(
+                // One UI Capsule Mode Selector
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                        .padding(top = 12.dp)
+                        .background(oneUiCardBg, RoundedCornerShape(20.dp))
+                        .padding(4.dp)
                 ) {
-                    Button(
-                        onClick = { viewModel.setMode(AppMode.VISION) },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (uiState.activeMode == AppMode.VISION) MaterialTheme.colorScheme.primary else Color.Gray
-                        ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(40.dp)
-                            .semantics { contentDescription = "Switch to Vision Mode for scene description" },
-                        shape = RoundedCornerShape(10.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(text = "👁 Vision", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    }
+                        Button(
+                            onClick = { viewModel.setMode(AppMode.VISION) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (uiState.activeMode == AppMode.VISION) oneUiAccentBlue else Color.Transparent
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(42.dp),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Text(
+                                text = "👁 Vision",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (uiState.activeMode == AppMode.VISION) Color.White else Color.Gray
+                            )
+                        }
 
-                    Spacer(modifier = Modifier.width(4.dp))
+                        Button(
+                            onClick = { viewModel.setMode(AppMode.READ) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (uiState.activeMode == AppMode.READ) Color(0xFF1565C0) else Color.Transparent
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(42.dp),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Text(
+                                text = "📖 Read",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (uiState.activeMode == AppMode.READ) Color.White else Color.Gray
+                            )
+                        }
 
-                    Button(
-                        onClick = { viewModel.setMode(AppMode.READ) },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (uiState.activeMode == AppMode.READ) Color(0xFF1565C0) else Color.Gray
-                        ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(40.dp)
-                            .semantics { contentDescription = "Switch to Read Mode for document reading" },
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text(text = "📖 Read", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    }
-
-                    Spacer(modifier = Modifier.width(4.dp))
-
-                    Button(
-                        onClick = { viewModel.setMode(AppMode.MEDICATION) },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (uiState.activeMode == AppMode.MEDICATION) Color(0xFFE65100) else Color.Gray
-                        ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(40.dp)
-                            .semantics { contentDescription = "Switch to Medication Assistant mode" },
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text(text = "💊 Medicine", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Button(
+                            onClick = { viewModel.setMode(AppMode.MEDICATION) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (uiState.activeMode == AppMode.MEDICATION) oneUiWarningOrange else Color.Transparent
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(42.dp),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Text(
+                                text = "💊 Medicine",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (uiState.activeMode == AppMode.MEDICATION) Color.White else Color.Gray
+                            )
+                        }
                     }
                 }
             }
 
-            // Central Area: Live Camera Preview OR Active Output & Conversation History
+            // Viewing Deck - Samsung One UI Curved Viewport
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .padding(vertical = 6.dp)
+                    .padding(vertical = 10.dp)
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(oneUiCardBg)
             ) {
                 if (uiState.isCameraActive) {
                     CameraPreviewView(
@@ -299,80 +335,88 @@ fun HomeScreen(
                     )
                 }
 
-                // Spoken Feedback Card Overlay
+                // Smooth Feedback & Output Deck Overlay
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(
-                            if (uiState.isCameraActive) Color.Black.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceVariant,
-                            RoundedCornerShape(16.dp)
-                        )
-                        .padding(12.dp),
+                        .background(if (uiState.isCameraActive) Color.Black.copy(alpha = 0.55f) else Color.Transparent)
+                        .padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // Top Status / Listening Bar
+                    // Status Badge
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         if (uiState.isAnalyzing) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
-                                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(20.dp))
-                                    .padding(horizontal = 14.dp, vertical = 6.dp)
+                                    .background(oneUiAccentBlue, RoundedCornerShape(20.dp))
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
                             ) {
                                 CircularProgressIndicator(
-                                    modifier = Modifier.height(16.dp).width(16.dp),
+                                    modifier = Modifier.size(18.dp),
                                     color = Color.White,
                                     strokeWidth = 2.dp
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Analyzing image...", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text("Analyzing visual input...", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             }
                         } else if (uiState.isListening) {
-                            Box(
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
-                                    .background(Color(0xFF2E7D32), RoundedCornerShape(20.dp))
-                                    .padding(horizontal = 14.dp, vertical = 6.dp)
+                                    .background(oneUiActiveGreen, RoundedCornerShape(20.dp))
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
                             ) {
-                                Text("🎙 Listening... Speak command", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Box(
+                                    modifier = Modifier
+                                        .size(12.dp)
+                                        .background(Color.White, CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("🎙 Microphone Listening...", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             }
                         }
                     }
 
-                    // Main Output Text or Scanned Medication View
+                    // Main Output Area / Scanned Medication
                     if (uiState.detectedMedication != null) {
-                        MedicationView(
-                            item = uiState.detectedMedication!!,
-                            onConfirmReminder = { viewModel.confirmMedicationReminder() },
-                            onCancel = { viewModel.clearMedication() }
-                        )
+                        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                            MedicationView(
+                                item = uiState.detectedMedication!!,
+                                onConfirmReminder = { viewModel.confirmMedicationReminder() },
+                                onCancel = { viewModel.clearMedication() }
+                            )
+                        }
                     } else {
-                        LazyColumn(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .weight(1f)
-                                .padding(vertical = 4.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
+                                .verticalScroll(rememberScrollState())
+                                .padding(horizontal = 8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            item {
-                                Text(
-                                    text = uiState.lastSpokenResponse,
-                                    style = MaterialTheme.typography.bodyLarge.copy(
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Bold
-                                    ),
-                                    textAlign = TextAlign.Center,
-                                    color = Color.White
-                                )
+                            Text(
+                                text = uiState.lastSpokenResponse,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                color = Color.White,
+                                lineHeight = 28.sp
+                            )
 
-                                if (uiState.lastRecognizedText.isNotBlank()) {
-                                    Spacer(modifier = Modifier.height(8.dp))
+                            if (uiState.lastRecognizedText.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .background(oneUiAccentBlue.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                                ) {
                                     Text(
-                                        text = "You Said: \"${uiState.lastRecognizedText}\"",
-                                        style = MaterialTheme.typography.bodyMedium,
+                                        text = "You said: \"${uiState.lastRecognizedText}\"",
+                                        fontSize = 14.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = Color(0xFFFFEB3B),
+                                        color = Color(0xFF90CAF9),
                                         textAlign = TextAlign.Center
                                     )
                                 }
@@ -380,39 +424,45 @@ fun HomeScreen(
                         }
                     }
 
-                    // Floating Action Chips
+                    // Quick Action Chips (One UI Reachability)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
                         Button(
                             onClick = { viewModel.captureAndAnalyze("What is in front of me?") },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                            shape = RoundedCornerShape(20.dp),
-                            modifier = Modifier.height(38.dp)
+                            colors = ButtonDefaults.buttonColors(containerColor = oneUiAccentBlue),
+                            shape = RoundedCornerShape(18.dp),
+                            modifier = Modifier.height(40.dp)
                         ) {
-                            Text("👁 What is in front?", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("👁 Analyze Scene", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
 
                         Button(
-                            onClick = { onRequestCameraPermission() },
+                            onClick = onRequestCameraPermission,
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (uiState.isCameraActive) Color(0xFFC62828) else MaterialTheme.colorScheme.secondary
+                                containerColor = if (uiState.isCameraActive) oneUiErrorRed else Color(0xFF33333C)
                             ),
-                            shape = RoundedCornerShape(20.dp),
-                            modifier = Modifier.height(38.dp)
+                            shape = RoundedCornerShape(18.dp),
+                            modifier = Modifier.height(40.dp)
                         ) {
-                            Text(if (uiState.isCameraActive) "📷 Close Cam" else "📷 Open Cam", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                if (uiState.isCameraActive) "📷 Close Cam" else "📷 Open Cam",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
                         }
                     }
                 }
             }
 
-            // High Contrast Voice Touch Targets
+            // Samsung One UI Reachability Control Deck (Bottom Zone)
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                // Giant One UI Primary Voice Trigger Button
                 Button(
                     onClick = {
                         if (uiState.isListening) {
@@ -423,25 +473,26 @@ fun HomeScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(72.dp)
+                        .height(76.dp)
                         .semantics {
                             contentDescription = if (uiState.isListening) "Tap to stop listening" else "Tap to speak voice command"
                         },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (uiState.isListening) Color(0xFFC62828) else MaterialTheme.colorScheme.primary
+                        containerColor = if (uiState.isListening) oneUiErrorRed else oneUiAccentBlue
                     ),
-                    shape = RoundedCornerShape(16.dp)
+                    shape = RoundedCornerShape(26.dp)
                 ) {
                     Text(
                         text = if (uiState.isListening) "⏹ Stop Listening" else "🎤 Tap to Speak Command",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.ExtraBold,
                         color = Color.White
                     )
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
+                // Secondary Control Row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -450,26 +501,33 @@ fun HomeScreen(
                         onClick = { viewModel.repeatLastResponse() },
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
-                            .semantics { contentDescription = "Repeat last text readout" },
-                        shape = RoundedCornerShape(12.dp)
+                            .height(52.dp)
+                            .semantics { contentDescription = "Repeat last spoken feedback" },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text(text = "🔁 Repeat", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text(text = "🔁 Repeat", fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
 
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
 
                     OutlinedButton(
                         onClick = { viewModel.stopSpeech() },
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
+                            .height(52.dp)
                             .semantics { contentDescription = "Silence audio output" },
-                        shape = RoundedCornerShape(12.dp)
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text(text = "🔇 Stop", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text(text = "🔇 Stop Audio", fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
                 }
+                Spacer(modifier = Modifier.height(4.dp))
             }
         }
     }
