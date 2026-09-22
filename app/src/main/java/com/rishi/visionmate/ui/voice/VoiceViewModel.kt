@@ -153,6 +153,13 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun handleDarknessDetected() {
+        if (!_uiState.value.isTorchOn) {
+            toggleTorch(true)
+            speakResponse("Low light detected. Flashlight automatically turned on.")
+        }
+    }
+
     fun captureAndAnalyze(customPrompt: String? = null) {
         if (!_uiState.value.isCameraActive) {
             _uiState.value = _uiState.value.copy(isCameraActive = true)

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -39,7 +38,8 @@ fun CameraPreviewView(
     onToggleTorch: (Boolean) -> Unit,
     onCaptureImage: (Bitmap) -> Unit,
     onError: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onDarknessDetected: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -54,6 +54,7 @@ fun CameraPreviewView(
                 cameraManager.bindCamera(
                     lifecycleOwner = lifecycleOwner,
                     previewView = previewView,
+                    onDarknessDetected = onDarknessDetected,
                     onError = onError
                 )
                 previewView

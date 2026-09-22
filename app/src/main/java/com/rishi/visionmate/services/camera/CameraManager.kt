@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.util.Log
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
@@ -20,11 +21,13 @@ import java.util.concurrent.Executors
 class CameraManager(private val context: Context) {
 
     private var imageCapture: ImageCapture? = null
+    private var imageAnalysis: ImageAnalysis? = null
     private var cameraProvider: ProcessCameraProvider? = null
     private var camera: Camera? = null
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
     private var pendingCaptureCallback: Pair<(Bitmap) -> Unit, (String) -> Unit>? = null
+    private var lastAutoTorchTime: Long = 0L
 
     var isTorchOn: Boolean = false
         private set
@@ -35,6 +38,7 @@ class CameraManager(private val context: Context) {
     fun bindCamera(
         lifecycleOwner: LifecycleOwner,
         previewView: PreviewView,
+        onDarknessDetected: (() -> Unit)? = null,
         onError: (String) -> Unit
     ) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
@@ -50,6 +54,24 @@ class CameraManager(private val context: Context) {
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                     .build()
 
+                imageAnalysis = ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .build().also { analyzer ->
+                        analyzer.setAnalyzer(cameraExecutor) { imageProxy ->
+                            val luma = calculateLuminance(imageProxy)
+                            imageProxy.close()
+
+                            val now = System.currentTimeMillis()
+                            // Darkness threshold: luma < 30.0 out of 255.0
+                            if (luma < 30.0 && !isTorchOn && (now - lastAutoTorchTime > 8000L)) {
+                                lastAutoTorchTime = now
+                                ContextCompat.getMainExecutor(context).execute {
+                                    onDarknessDetected?.invoke()
+                                }
+                            }
+                        }
+                    }
+
                 val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
                 cameraProvider?.unbindAll()
@@ -57,7 +79,8 @@ class CameraManager(private val context: Context) {
                     lifecycleOwner,
                     cameraSelector,
                     preview,
-                    imageCapture
+                    imageCapture,
+                    imageAnalysis
                 )
 
                 // Restore torch state if enabled
@@ -65,7 +88,7 @@ class CameraManager(private val context: Context) {
                     setTorch(true, onError)
                 }
 
-                Log.d("CameraManager", "Camera successfully bound to lifecycle")
+                Log.d("CameraManager", "Camera & ImageAnalysis successfully bound to lifecycle")
 
                 // Process pending capture request if any
                 pendingCaptureCallback?.let { (onCaptured, onErr) ->
@@ -127,6 +150,24 @@ class CameraManager(private val context: Context) {
         )
     }
 
+    private fun calculateLuminance(imageProxy: ImageProxy): Double {
+        val plane = imageProxy.planes.getOrNull(0) ?: return 255.0
+        val buffer = plane.buffer
+        val data = ByteArray(buffer.remaining())
+        buffer.get(data)
+
+        var totalLuma = 0L
+        val step = 16
+        var count = 0
+        var i = 0
+        while (i < data.size) {
+            totalLuma += (data[i].toInt() and 0xFF)
+            count++
+            i += step
+        }
+        return if (count > 0) totalLuma.toDouble() / count else 255.0
+    }
+
     private fun imageProxyToBitmap(imageProxy: ImageProxy): Bitmap? {
         val buffer = imageProxy.planes[0].buffer
         val bytes = ByteArray(buffer.remaining())
@@ -140,5 +181,6 @@ class CameraManager(private val context: Context) {
         cameraExecutor.shutdown()
         camera = null
         imageCapture = null
+        imageAnalysis = null
     }
 }

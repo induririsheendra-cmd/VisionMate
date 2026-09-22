@@ -330,6 +330,7 @@ fun OneUiHomeScreen(
                         isTorchOn = uiState.isTorchOn,
                         onToggleTorch = { enable -> viewModel.toggleTorch(enable) },
                         onCaptureImage = { bitmap -> viewModel.handleCapturedImage(bitmap) },
+                        onDarknessDetected = { viewModel.handleDarknessDetected() },
                         onError = { error -> viewModel.speakResponse(error) },
                         modifier = Modifier.fillMaxSize()
                     )
