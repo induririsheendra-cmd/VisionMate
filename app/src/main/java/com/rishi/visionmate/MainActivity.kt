@@ -3,7 +3,6 @@ package com.rishi.visionmate
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -20,13 +19,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -57,31 +54,27 @@ class MainActivity : ComponentActivity() {
 
     private val voiceViewModel: VoiceViewModel by viewModels()
 
-    private val requestAudioPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted: Boolean ->
-        if (isGranted) {
-            voiceViewModel.startListening()
-        } else {
-            Toast.makeText(this, "Microphone permission is required for voice commands", Toast.LENGTH_LONG).show()
-            voiceViewModel.speakResponse("Microphone permission is required to listen to your commands.")
-        }
-    }
+    private val requestPermissionsLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val recordGranted = permissions[Manifest.permission.RECORD_AUDIO] ?: false
+        val cameraGranted = permissions[Manifest.permission.CAMERA] ?: false
 
-    private val requestCameraPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted: Boolean ->
-        if (isGranted) {
+        if (cameraGranted) {
             voiceViewModel.toggleCamera(true)
-        } else {
-            Toast.makeText(this, "Camera permission is required for vision, read, and medication modes", Toast.LENGTH_LONG).show()
-            voiceViewModel.speakResponse("Camera permission is required to use Vision, Read, and Medication modes.")
+        }
+        if (recordGranted) {
+            voiceViewModel.startListening()
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Auto-request initial permissions on startup
+        checkAndRequestPermissions()
+
         setContent {
             VisionMateTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
@@ -96,11 +89,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun checkAndRequestPermissions() {
+        val permissionsToRequest = mutableListOf<String>()
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            permissionsToRequest.add(Manifest.permission.RECORD_AUDIO)
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            permissionsToRequest.add(Manifest.permission.CAMERA)
+        }
+        if (permissionsToRequest.isNotEmpty()) {
+            requestPermissionsLauncher.launch(permissionsToRequest.toTypedArray())
+        }
+    }
+
     private fun checkAndStartListening() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             voiceViewModel.startListening()
         } else {
-            requestAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            requestPermissionsLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
         }
     }
 
@@ -111,7 +117,7 @@ class MainActivity : ComponentActivity() {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
                 voiceViewModel.toggleCamera(true)
             } else {
-                requestCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                requestPermissionsLauncher.launch(arrayOf(Manifest.permission.CAMERA))
             }
         }
     }
@@ -154,11 +160,11 @@ fun HomeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(14.dp),
+                .padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Header Bar with Offline Indicator & Settings
+            // Header Bar
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
@@ -203,7 +209,7 @@ fun HomeScreen(
 
                 // Offline Notice Banner
                 if (!uiState.isOnline) {
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -220,7 +226,7 @@ fun HomeScreen(
                     }
                 }
 
-                // Mode Selector Bar (Vision / Read / Medication)
+                // Mode Selector Chips
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -234,11 +240,11 @@ fun HomeScreen(
                         ),
                         modifier = Modifier
                             .weight(1f)
-                            .height(44.dp)
+                            .height(40.dp)
                             .semantics { contentDescription = "Switch to Vision Mode for scene description" },
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text(text = "👁 Vision", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text(text = "👁 Vision", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     }
 
                     Spacer(modifier = Modifier.width(4.dp))
@@ -250,11 +256,11 @@ fun HomeScreen(
                         ),
                         modifier = Modifier
                             .weight(1f)
-                            .height(44.dp)
+                            .height(40.dp)
                             .semantics { contentDescription = "Switch to Read Mode for document reading" },
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text(text = "📖 Read", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text(text = "📖 Read", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     }
 
                     Spacer(modifier = Modifier.width(4.dp))
@@ -266,141 +272,143 @@ fun HomeScreen(
                         ),
                         modifier = Modifier
                             .weight(1f)
-                            .height(44.dp)
+                            .height(40.dp)
                             .semantics { contentDescription = "Switch to Medication Assistant mode" },
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text(text = "💊 Medicine", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text(text = "💊 Medicine", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
             }
 
-            // Central Area: Live Camera Preview OR Spoken Output Display / Medication View
-            if (uiState.isCameraActive) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .padding(vertical = 8.dp)
-                ) {
+            // Central Area: Live Camera Preview OR Active Output & Conversation History
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(vertical = 6.dp)
+            ) {
+                if (uiState.isCameraActive) {
                     CameraPreviewView(
                         cameraManager = viewModel.cameraManager,
                         isTorchOn = uiState.isTorchOn,
-                        onToggleTorch = { enable ->
-                            viewModel.toggleTorch(enable)
-                        },
-                        onCaptureImage = { bitmap ->
-                            viewModel.handleCapturedImage(bitmap)
-                        },
-                        onError = { error ->
-                            viewModel.speakResponse(error)
-                        },
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .semantics {
-                                contentDescription = "Live camera view"
-                            }
+                        onToggleTorch = { enable -> viewModel.toggleTorch(enable) },
+                        onCaptureImage = { bitmap -> viewModel.handleCapturedImage(bitmap) },
+                        onError = { error -> viewModel.speakResponse(error) },
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
-            } else if (uiState.detectedMedication != null) {
+
+                // Spoken Feedback Card Overlay
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
+                        .fillMaxSize()
+                        .background(
+                            if (uiState.isCameraActive) Color.Black.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceVariant,
+                            RoundedCornerShape(16.dp)
+                        )
+                        .padding(12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    MedicationView(
-                        item = uiState.detectedMedication!!,
-                        onConfirmReminder = { viewModel.confirmMedicationReminder() },
-                        onCancel = { viewModel.clearMedication() }
-                    )
-                }
-            } else {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .padding(vertical = 8.dp)
-                        .semantics {
-                            contentDescription = "Spoken feedback card: ${uiState.lastSpokenResponse}"
-                        },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(18.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        if (uiState.isListening) {
+                    // Top Status / Listening Bar
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (uiState.isAnalyzing) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(20.dp))
+                                    .padding(horizontal = 14.dp, vertical = 6.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.height(16.dp).width(16.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Analyzing image...", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            }
+                        } else if (uiState.isListening) {
                             Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color(0xFF2E7D32), RoundedCornerShape(8.dp))
-                                    .padding(8.dp),
-                                contentAlignment = Alignment.Center
+                                    .background(Color(0xFF2E7D32), RoundedCornerShape(20.dp))
+                                    .padding(horizontal = 14.dp, vertical = 6.dp)
                             ) {
-                                Text(
-                                    text = "🎙 Listening... Speak command",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp
-                                )
+                                Text("🎙 Listening... Speak command", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             }
-                            Spacer(modifier = Modifier.height(12.dp))
                         }
+                    }
 
-                        val modeTitle = when (uiState.activeMode) {
-                            AppMode.READ -> "Read Mode Output:"
-                            AppMode.MEDICATION -> "Medication Output:"
-                            AppMode.VISION -> "Vision Mode Output:"
-                        }
-
-                        Text(
-                            text = modeTitle,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary
+                    // Main Output Text or Scanned Medication View
+                    if (uiState.detectedMedication != null) {
+                        MedicationView(
+                            item = uiState.detectedMedication!!,
+                            onConfirmReminder = { viewModel.confirmMedicationReminder() },
+                            onCancel = { viewModel.clearMedication() }
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = uiState.lastSpokenResponse,
-                            style = MaterialTheme.typography.bodyLarge.copy(
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Medium
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .padding(vertical = 4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            item {
+                                Text(
+                                    text = uiState.lastSpokenResponse,
+                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    textAlign = TextAlign.Center,
+                                    color = Color.White
+                                )
+
+                                if (uiState.lastRecognizedText.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "You Said: \"${uiState.lastRecognizedText}\"",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFFFFEB3B),
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Floating Action Chips
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        Button(
+                            onClick = { viewModel.captureAndAnalyze("What is in front of me?") },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier.height(38.dp)
+                        ) {
+                            Text("👁 What is in front?", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = { onRequestCameraPermission() },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (uiState.isCameraActive) Color(0xFFC62828) else MaterialTheme.colorScheme.secondary
                             ),
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        if (uiState.lastRecognizedText.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = "You Said: \"${uiState.lastRecognizedText}\"",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.secondary,
-                                textAlign = TextAlign.Center
-                            )
-                        }
-
-                        uiState.errorMessage?.let { error ->
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text(
-                                text = error,
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall,
-                                textAlign = TextAlign.Center
-                            )
+                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier.height(38.dp)
+                        ) {
+                            Text(if (uiState.isCameraActive) "📷 Close Cam" else "📷 Open Cam", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             }
 
-            // Controls Section (High Contrast Touch Targets)
+            // High Contrast Voice Touch Targets
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -432,44 +440,21 @@ fun HomeScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Button(
-                        onClick = onRequestCameraPermission,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(52.dp)
-                            .semantics {
-                                contentDescription = if (uiState.isCameraActive) "Tap to close camera" else "Tap to open camera"
-                            },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (uiState.isCameraActive) Color(0xFFC62828) else MaterialTheme.colorScheme.secondary
-                        ),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text(
-                            text = if (uiState.isCameraActive) "📷 Close Camera" else "📷 Open Camera",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(6.dp))
-
                     OutlinedButton(
                         onClick = { viewModel.repeatLastResponse() },
                         modifier = Modifier
                             .weight(1f)
-                            .height(52.dp)
+                            .height(48.dp)
                             .semantics { contentDescription = "Repeat last text readout" },
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text(text = "🔁 Repeat", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Text(text = "🔁 Repeat", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
 
                     Spacer(modifier = Modifier.width(6.dp))
@@ -478,14 +463,13 @@ fun HomeScreen(
                         onClick = { viewModel.stopSpeech() },
                         modifier = Modifier
                             .weight(1f)
-                            .height(52.dp)
+                            .height(48.dp)
                             .semantics { contentDescription = "Silence audio output" },
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text(text = "🔇 Stop", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Text(text = "🔇 Stop", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
                 }
-                Spacer(modifier = Modifier.height(4.dp))
             }
         }
     }

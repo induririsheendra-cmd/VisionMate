@@ -24,8 +24,13 @@ class CameraManager(private val context: Context) {
     private var camera: Camera? = null
     private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
+    private var pendingCaptureCallback: Pair<(Bitmap) -> Unit, (String) -> Unit>? = null
+
     var isTorchOn: Boolean = false
         private set
+
+    val isBound: Boolean
+        get() = imageCapture != null && camera != null
 
     fun bindCamera(
         lifecycleOwner: LifecycleOwner,
@@ -61,6 +66,12 @@ class CameraManager(private val context: Context) {
                 }
 
                 Log.d("CameraManager", "Camera successfully bound to lifecycle")
+
+                // Process pending capture request if any
+                pendingCaptureCallback?.let { (onCaptured, onErr) ->
+                    pendingCaptureCallback = null
+                    takePicture(onCaptured, onErr)
+                }
             } catch (e: Exception) {
                 Log.e("CameraManager", "Failed to bind camera lifecycle", e)
                 onError("Failed to start camera preview: ${e.localizedMessage}")
@@ -90,7 +101,8 @@ class CameraManager(private val context: Context) {
     ) {
         val capture = imageCapture
         if (capture == null) {
-            onError("Camera is not initialized yet.")
+            Log.d("CameraManager", "Camera not initialized yet, queueing capture request...")
+            pendingCaptureCallback = Pair(onImageCaptured, onError)
             return
         }
 
@@ -123,8 +135,10 @@ class CameraManager(private val context: Context) {
     }
 
     fun unbind() {
+        pendingCaptureCallback = null
         cameraProvider?.unbindAll()
         cameraExecutor.shutdown()
         camera = null
+        imageCapture = null
     }
 }

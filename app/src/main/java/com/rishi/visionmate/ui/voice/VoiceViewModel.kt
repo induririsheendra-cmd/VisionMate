@@ -30,7 +30,7 @@ enum class AppMode {
 
 data class VoiceUiState(
     val isListening: Boolean = false,
-    val isCameraActive: Boolean = false,
+    val isCameraActive: Boolean = true, // Default active for instant captures
     val isTorchOn: Boolean = false,
     val isAnalyzing: Boolean = false,
     val isIncidentAlertActive: Boolean = false,
@@ -42,7 +42,8 @@ data class VoiceUiState(
     val activeMode: AppMode = AppMode.VISION,
     val detectedMedication: MedicationItem? = null,
     val lastRecognizedText: String = "",
-    val lastSpokenResponse: String = "Welcome to VisionMate. Tap the voice button or camera button to begin.",
+    val lastSpokenResponse: String = "Welcome to VisionMate. I am listening. Say what is in front of me or read this.",
+    val conversationHistory: List<Pair<String, String>> = emptyList(), // History of (Query, Response)
     val errorMessage: String? = null,
     val capturedBitmap: Bitmap? = null
 )
@@ -86,7 +87,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         // Initial spoken welcome
-        speakResponse("Welcome to VisionMate. Tap or activate speech to begin.")
+        speakResponse("Welcome to VisionMate. Tap or speak your command.")
     }
 
     fun startListening() {
@@ -118,9 +119,9 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     fun setMode(mode: AppMode) {
         _uiState.value = _uiState.value.copy(activeMode = mode, detectedMedication = null)
         when (mode) {
-            AppMode.READ -> speakResponse("Read Mode selected. Point camera at document or text and tap Capture.")
-            AppMode.MEDICATION -> speakResponse("Medication Assistant selected. Point camera at prescription label or bottle and tap Capture.")
-            AppMode.VISION -> speakResponse("Vision Mode selected. Point camera at your surroundings and tap Capture.")
+            AppMode.READ -> speakResponse("Read Mode selected. Point camera at document and tap Capture or speak command.")
+            AppMode.MEDICATION -> speakResponse("Medication Mode selected. Point camera at medicine package and tap Capture or speak command.")
+            AppMode.VISION -> speakResponse("Vision Mode selected. Point camera at surroundings and ask what is in front of me.")
         }
     }
 
@@ -132,7 +133,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                 AppMode.MEDICATION -> "Medication Assistant"
                 AppMode.VISION -> "Vision Mode"
             }
-            speakResponse("Camera activated in $modeName. Point your camera and tap Capture.")
+            speakResponse("Camera activated in $modeName.")
         } else {
             toggleTorch(false)
             speakResponse("Camera closed.")
@@ -152,7 +153,23 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun handleCapturedImage(bitmap: Bitmap) {
+    fun captureAndAnalyze(customPrompt: String? = null) {
+        if (!_uiState.value.isCameraActive) {
+            _uiState.value = _uiState.value.copy(isCameraActive = true)
+        }
+
+        speakResponse("Capturing image for analysis...")
+        cameraManager.takePicture(
+            onImageCaptured = { bitmap ->
+                handleCapturedImage(bitmap, customPrompt)
+            },
+            onError = { err ->
+                speakResponse(err)
+            }
+        )
+    }
+
+    fun handleCapturedImage(bitmap: Bitmap, customPrompt: String? = null) {
         _uiState.value = _uiState.value.copy(
             capturedBitmap = bitmap,
             isAnalyzing = true,
@@ -174,7 +191,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
 
         when (_uiState.value.activeMode) {
             AppMode.READ -> {
-                speakResponse("Photo captured. Reading text from document, please wait...")
+                speakResponse("Reading document text, please wait...")
                 viewModelScope.launch {
                     val result = readTextUseCase(bitmap)
                     _uiState.value = _uiState.value.copy(isAnalyzing = false)
@@ -188,7 +205,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             AppMode.MEDICATION -> {
-                speakResponse("Photo captured. Extracting medication label details, please wait...")
+                speakResponse("Analyzing medication label, please wait...")
                 viewModelScope.launch {
                     val result = readTextUseCase(bitmap)
                     _uiState.value = _uiState.value.copy(isAnalyzing = false)
@@ -204,9 +221,9 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             AppMode.VISION -> {
-                speakResponse("Photo captured. Analyzing your surroundings, please wait...")
+                speakResponse("Analyzing surroundings, please wait...")
                 viewModelScope.launch {
-                    val result = analyzeSceneUseCase(bitmap)
+                    val result = analyzeSceneUseCase(bitmap, customPrompt)
                     _uiState.value = _uiState.value.copy(isAnalyzing = false)
                     result.onSuccess { description ->
                         speakResponse(description)
@@ -220,6 +237,22 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                         speakResponse(userMsg)
                     }
                 }
+            }
+        }
+    }
+
+    private fun handleFollowUpQuestion(userQuestion: String) {
+        speakResponse("Processing your question...")
+        _uiState.value = _uiState.value.copy(isAnalyzing = true)
+
+        viewModelScope.launch {
+            val result = analyzeSceneUseCase.askFollowUp(userQuestion)
+            _uiState.value = _uiState.value.copy(isAnalyzing = false)
+            result.onSuccess { responseText ->
+                speakResponse(responseText)
+            }.onFailure { _ ->
+                // If no previous image exists, capture a new image and answer
+                captureAndAnalyze("Answer this question about what is in front of the camera: '$userQuestion'")
             }
         }
     }
@@ -253,7 +286,6 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.value = _uiState.value.copy(incidentCountdownSeconds = sec)
                 delay(1000)
             }
-            // If countdown expires without user confirmation
             sendEmergencyAlert()
         }
     }
@@ -289,7 +321,17 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun speakResponse(text: String, flush: Boolean = true) {
-        _uiState.value = _uiState.value.copy(lastSpokenResponse = text)
+        val currentText = _uiState.value.lastRecognizedText
+        val updatedHistory = if (currentText.isNotBlank()) {
+            (_uiState.value.conversationHistory + Pair(currentText, text)).takeLast(10)
+        } else {
+            _uiState.value.conversationHistory
+        }
+
+        _uiState.value = _uiState.value.copy(
+            lastSpokenResponse = text,
+            conversationHistory = updatedHistory
+        )
         ttsManager.speak(text, flush)
     }
 
@@ -298,7 +340,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
 
         val cleanText = recognizedText.lowercase().trim()
 
-        // Handle Active Incident Voice Responses
+        // Active Incident Verification
         if (_uiState.value.isIncidentAlertActive) {
             if (cleanText.contains("okay") || cleanText.contains("fine") || cleanText.contains("cancel") || cleanText.contains("good")) {
                 confirmUserIsOkay()
@@ -307,6 +349,22 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                 sendEmergencyAlert()
                 return
             }
+        }
+
+        // Detect Follow-Up Questions (e.g. "what is it used for", "how do I take it", "what color", "what is the price", "tell me more", "how many", "why")
+        val isFollowUp = cleanText.startsWith("what is it") ||
+                cleanText.contains("used for") ||
+                cleanText.contains("how do i") ||
+                cleanText.contains("how to use") ||
+                cleanText.contains("tell me more") ||
+                cleanText.contains("what color") ||
+                cleanText.contains("what price") ||
+                cleanText.contains("explain more") ||
+                cleanText.contains("dosage")
+
+        if (isFollowUp) {
+            handleFollowUpQuestion(recognizedText)
+            return
         }
 
         when {
@@ -337,39 +395,33 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
             }
             cleanText.contains("medication") || cleanText.contains("medicine") || cleanText.contains("pill") || cleanText.contains("prescription") -> {
                 setMode(AppMode.MEDICATION)
-                if (!_uiState.value.isCameraActive) {
-                    toggleCamera(true)
-                }
+                captureAndAnalyze()
             }
             cleanText.contains("read") || cleanText.contains("read this") || cleanText.contains("document") -> {
                 setMode(AppMode.READ)
-                if (!_uiState.value.isCameraActive) {
-                    toggleCamera(true)
-                }
+                captureAndAnalyze()
             }
-            cleanText.contains("around me") || cleanText.contains("what is in front") || cleanText.contains("describe") || cleanText.contains("vision") -> {
+            cleanText.contains("around me") || cleanText.contains("what is in front") || cleanText.contains("describe") || cleanText.contains("vision") || cleanText.contains("what is this") -> {
                 setMode(AppMode.VISION)
-                if (!_uiState.value.isCameraActive) {
-                    toggleCamera(true)
-                }
-                speakResponse("Capturing scene for analysis.")
-                cameraManager.takePicture(
-                    onImageCaptured = { bitmap -> handleCapturedImage(bitmap) },
-                    onError = { err -> speakResponse(err) }
-                )
+                captureAndAnalyze()
             }
             cleanText.contains("close camera") || cleanText.contains("hide camera") -> {
                 toggleCamera(false)
             }
             cleanText.contains("help") -> {
-                speakResponse("You can say: 'Medication', 'Read this', 'What is around me', 'Repeat', 'Settings', or 'Help'.")
+                speakResponse("You can say: 'What is in front of me', 'Read this', 'Medication', 'What is it used for', 'Repeat', or 'Help'.")
             }
             cleanText.contains("stop") -> {
                 ttsManager.stop()
                 speakResponse("Stopped audio playback.")
             }
             else -> {
-                speakResponse("I heard: '$recognizedText'. Say 'Medication', 'Read this', 'What is around me', or 'Help' for options.")
+                // If it's a general question, route as follow-up query to Gemini!
+                if (cleanText.length > 5) {
+                    handleFollowUpQuestion(recognizedText)
+                } else {
+                    speakResponse("I heard: '$recognizedText'. Say 'What is in front of me', 'Read this', or 'Help'.")
+                }
             }
         }
     }
